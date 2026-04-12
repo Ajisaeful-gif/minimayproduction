@@ -7,7 +7,7 @@ import {
   SummaryCard,
   Tag
 } from "@/components/ui";
-import { inventoryRows } from "@/lib/mock-data";
+import { inventoryRows } from "@/lib/master-data-client";
 
 const inventoryTableRows = inventoryRows.map((row) => ({
   key: row.kodeBarang,

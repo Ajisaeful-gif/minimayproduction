@@ -15,7 +15,7 @@ import {
   TextInput,
   SelectInput
 } from "@/components/ui";
-import { rackOperators } from "@/lib/mock-data";
+import { getMasterData } from "@/lib/master-data-client";
 import { getPlanCuttingRecords } from "@/lib/plan-cutting-storage";
 import { getSeriRecords } from "@/lib/seri-storage";
 import {
@@ -24,40 +24,55 @@ import {
 } from "@/lib/racking-storage";
 
 export default function RackingPage() {
+  const [masterData, setMasterData] = useState({
+    operators: { cutting: [], seri: [], racking: [], sewing: [] }
+  });
+  const [loadError, setLoadError] = useState("");
   const [planCuttingRecords, setPlanCuttingRecords] = useState([]);
   const [seriRecords, setSeriRecords] = useState([]);
   const [usedKodePc, setUsedKodePc] = useState([]);
   const [kodePc, setKodePc] = useState("");
   const [tanggal, setTanggal] = useState("2026-04-11");
-  const [operator, setOperator] = useState(rackOperators[0]);
+  const [operator, setOperator] = useState("");
   const [scanKodeProduksi, setScanKodeProduksi] = useState("");
   const [scannedRows, setScannedRows] = useState([]);
   const [openModal, setOpenModal] = useState(false);
+  const rackOperators = masterData.operators.racking ?? [];
 
   useEffect(() => {
     async function syncRecords() {
-      const [records, nextSeriRecords, usedKode] = await Promise.all([
-        getPlanCuttingRecords(),
-        getSeriRecords(),
-        getUsedRackingKodePc()
-      ]);
-      const availableRecords = records.filter(
-        (record) => !usedKode.includes(record.kodePc)
-      );
+      try {
+        const [nextMasterData, records, nextSeriRecords, usedKode] = await Promise.all([
+          getMasterData(),
+          getPlanCuttingRecords(),
+          getSeriRecords(),
+          getUsedRackingKodePc()
+        ]);
+        const availableRecords = records.filter(
+          (record) => !usedKode.includes(record.kodePc)
+        );
 
-      setPlanCuttingRecords(availableRecords);
-      setSeriRecords(nextSeriRecords);
-      setUsedKodePc(usedKode);
-      setKodePc((current) => {
-        if (
-          current &&
-          availableRecords.some((record) => record.kodePc === current)
-        ) {
-          return current;
-        }
+        setMasterData(nextMasterData);
+        setPlanCuttingRecords(availableRecords);
+        setSeriRecords(nextSeriRecords);
+        setUsedKodePc(usedKode);
+        setLoadError("");
+        setKodePc((current) => {
+          if (
+            current &&
+            availableRecords.some((record) => record.kodePc === current)
+          ) {
+            return current;
+          }
 
-        return availableRecords[0]?.kodePc ?? "";
-      });
+          return availableRecords[0]?.kodePc ?? "";
+        });
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Data Racking gagal dimuat.");
+        setPlanCuttingRecords([]);
+        setSeriRecords([]);
+        setUsedKodePc([]);
+      }
     }
 
     syncRecords();
@@ -73,6 +88,14 @@ export default function RackingPage() {
       window.removeEventListener("storage", syncRecords);
     };
   }, []);
+
+  useEffect(() => {
+    if (!rackOperators.length) {
+      return;
+    }
+
+    setOperator((current) => current || rackOperators[0] || "");
+  }, [rackOperators]);
 
   const selectedPlan =
     planCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
@@ -263,6 +286,12 @@ export default function RackingPage() {
         </div>
       </FormCard>
 
+      {loadError ? (
+        <FormCard title="Status Database">
+          <div className="muted-box">{loadError}</div>
+        </FormCard>
+      ) : null}
+
       {!planCuttingRecords.length ? (
         <FormCard title="Status Kode PC">
           <div className="muted-box">
@@ -320,6 +349,11 @@ export default function RackingPage() {
         <Button
           disabled={!isLengkap}
           onClick={() => {
+            if (loadError) {
+              window.alert(loadError);
+              return;
+            }
+
             if (!selectedPlan || !kodePc) {
               window.alert("Pilih Kode PC terlebih dahulu.");
               return;
@@ -353,20 +387,24 @@ export default function RackingPage() {
             return;
           }
 
-            await saveRackingRecord({
-              kodePc,
-              noPo: selectedPlan.noPo,
-              model: selectedPlan.model,
-              tanggal,
-              operator,
-              rows: scannedRows,
-              totalTarget: target,
-              totalScanned: scanned,
-              status: "Lengkap"
-            });
+            try {
+              await saveRackingRecord({
+                kodePc,
+                noPo: selectedPlan.noPo,
+                model: selectedPlan.model,
+                tanggal,
+                operator,
+                rows: scannedRows,
+                totalTarget: target,
+                totalScanned: scanned,
+                status: "Lengkap"
+              });
 
-            setOpenModal(false);
-            window.alert(`Data Racking disimpan.\nKode PC: ${kodePc}`);
+              setOpenModal(false);
+              window.alert(`Data Racking disimpan.\nKode PC: ${kodePc}`);
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : "Data Racking gagal disimpan.");
+            }
           })();
         }}
         open={openModal}

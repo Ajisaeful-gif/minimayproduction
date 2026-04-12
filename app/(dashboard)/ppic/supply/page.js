@@ -14,7 +14,7 @@ import {
   TextInput,
   SelectInput
 } from "@/components/ui";
-import { rackOperators } from "@/lib/mock-data";
+import { getMasterData } from "@/lib/master-data-client";
 import { getPlanSewingRecords } from "@/lib/plan-sewing-storage";
 import { getRackingRecords } from "@/lib/racking-storage";
 import {
@@ -23,40 +23,55 @@ import {
 } from "@/lib/supply-storage";
 
 export default function SupplyPage() {
+  const [masterData, setMasterData] = useState({
+    operators: { cutting: [], seri: [], racking: [], sewing: [] }
+  });
+  const [loadError, setLoadError] = useState("");
   const [planSewingRecords, setPlanSewingRecords] = useState([]);
   const [usedKodePs, setUsedKodePs] = useState([]);
   const [rackingRecords, setRackingRecords] = useState([]);
   const [kodePs, setKodePs] = useState("");
   const [tanggal, setTanggal] = useState("2026-04-11");
-  const [operator, setOperator] = useState(rackOperators[0]);
+  const [operator, setOperator] = useState("");
   const [scanKodeProduksi, setScanKodeProduksi] = useState("");
   const [scannedRows, setScannedRows] = useState([]);
   const [openModal, setOpenModal] = useState(false);
+  const rackOperators = masterData.operators.racking ?? [];
 
   useEffect(() => {
     async function syncRecords() {
-      const [planRecords, usedPs, nextRackingRecords] = await Promise.all([
-        getPlanSewingRecords(),
-        getUsedSupplyKodePs(),
-        getRackingRecords()
-      ]);
-      const availableRecords = planRecords.filter(
-        (record) => !usedPs.includes(record.kodePs)
-      );
+      try {
+        const [nextMasterData, planRecords, usedPs, nextRackingRecords] = await Promise.all([
+          getMasterData(),
+          getPlanSewingRecords(),
+          getUsedSupplyKodePs(),
+          getRackingRecords()
+        ]);
+        const availableRecords = planRecords.filter(
+          (record) => !usedPs.includes(record.kodePs)
+        );
 
-      setPlanSewingRecords(availableRecords);
-      setUsedKodePs(usedPs);
-      setRackingRecords(nextRackingRecords);
-      setKodePs((current) => {
-        if (
-          current &&
-          availableRecords.some((record) => record.kodePs === current)
-        ) {
-          return current;
-        }
+        setMasterData(nextMasterData);
+        setPlanSewingRecords(availableRecords);
+        setUsedKodePs(usedPs);
+        setRackingRecords(nextRackingRecords);
+        setLoadError("");
+        setKodePs((current) => {
+          if (
+            current &&
+            availableRecords.some((record) => record.kodePs === current)
+          ) {
+            return current;
+          }
 
-        return availableRecords[0]?.kodePs ?? "";
-      });
+          return availableRecords[0]?.kodePs ?? "";
+        });
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Data Supply gagal dimuat.");
+        setPlanSewingRecords([]);
+        setUsedKodePs([]);
+        setRackingRecords([]);
+      }
     }
 
     syncRecords();
@@ -72,6 +87,14 @@ export default function SupplyPage() {
       window.removeEventListener("storage", syncRecords);
     };
   }, []);
+
+  useEffect(() => {
+    if (!rackOperators.length) {
+      return;
+    }
+
+    setOperator((current) => current || rackOperators[0] || "");
+  }, [rackOperators]);
 
   const selectedPlanSewing =
     planSewingRecords.find((record) => record.kodePs === kodePs) ?? null;
@@ -231,6 +254,12 @@ export default function SupplyPage() {
         </div>
       </FormCard>
 
+      {loadError ? (
+        <FormCard title="Status Database">
+          <div className="muted-box">{loadError}</div>
+        </FormCard>
+      ) : null}
+
       {!planSewingRecords.length ? (
         <FormCard title="Status No PS">
           <div className="muted-box">
@@ -290,7 +319,14 @@ export default function SupplyPage() {
       <ActionRow>
         <Button
           disabled={!isReady || !hasRackingData}
-          onClick={() => setOpenModal(true)}
+          onClick={() => {
+            if (loadError) {
+              window.alert(loadError);
+              return;
+            }
+
+            setOpenModal(true);
+          }}
           variant="primary"
         >
           Simpan ke DB Supply
@@ -307,19 +343,23 @@ export default function SupplyPage() {
             return;
           }
 
-          await saveSupplyRecord({
-            kodePs,
-            kodePc: selectedPlanSewing.kodePc,
-            tanggal,
-            operator,
-            rows: scannedRows,
-            totalPlan,
-            totalActual,
-            status: statusText
-          });
+          try {
+            await saveSupplyRecord({
+              kodePs,
+              kodePc: selectedPlanSewing.kodePc,
+              tanggal,
+              operator,
+              rows: scannedRows,
+              totalPlan,
+              totalActual,
+              status: statusText
+            });
 
-          setOpenModal(false);
-          window.alert(`Data Supply disimpan.\nNo PS: ${kodePs}`);
+            setOpenModal(false);
+            window.alert(`Data Supply disimpan.\nNo PS: ${kodePs}`);
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : "Data Supply gagal disimpan.");
+          }
           })();
         }}
         open={openModal}

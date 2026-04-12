@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   ActionRow,
   Badge,
@@ -9,9 +12,42 @@ import {
   SummaryCard
 } from "@/components/ui";
 import { ExportSupabaseCsvButton } from "@/components/export-supabase-csv-button";
-import { users } from "@/lib/mock-data";
+import { getUserProfiles } from "@/lib/master-data-client";
 
 export default function UserManagementPage() {
+  const [users, setUsers] = useState([]);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadUsers() {
+      try {
+        const data = await getUserProfiles();
+
+        if (!active) {
+          return;
+        }
+
+        setUsers(data);
+        setLoadError("");
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setUsers([]);
+        setLoadError(error instanceof Error ? error.message : "Data user gagal dimuat.");
+      }
+    }
+
+    loadUsers();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const columns = [
     { key: "name", label: "Nama" },
     { key: "email", label: "Email" },
@@ -45,10 +81,11 @@ export default function UserManagementPage() {
         title="User Management"
       />
 
-      <InfoBanner title="Informasi">
-        Halaman ini sekarang juga bisa mengekspor seluruh tabel app dan auth ke paket CSV ZIP
-        untuk import manual ke Supabase dari data browser aktif.
+      <InfoBanner title="Database">
+        Export CSV tetap tersedia untuk utilitas import manual ke Supabase.
       </InfoBanner>
+
+      {loadError ? <InfoBanner title="Status">{loadError}</InfoBanner> : null}
 
       <div className="summary-grid three">
         <SummaryCard label="Total User" value={users.length} />

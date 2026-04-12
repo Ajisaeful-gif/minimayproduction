@@ -16,7 +16,7 @@ import {
   TextInput,
   SelectInput
 } from "@/components/ui";
-import { getSkuMetaBySku, seriOperators } from "@/lib/mock-data";
+import { getMasterData, getSkuMetaBySku } from "@/lib/master-data-client";
 import { getCuttingRecords } from "@/lib/cutting-storage";
 import {
   deleteSeriEntry,
@@ -54,48 +54,64 @@ function isKodePcComplete(cuttingRecord, seriRecord) {
 }
 
 export default function SeriPage() {
+  const [masterData, setMasterData] = useState({
+    skuRows: [],
+    operators: { cutting: [], seri: [], racking: [], sewing: [] }
+  });
+  const [loadError, setLoadError] = useState("");
   const [availableCuttingRecords, setAvailableCuttingRecords] = useState([]);
   const [seriRecords, setSeriRecords] = useState([]);
   const [completedKodePc, setCompletedKodePc] = useState([]);
   const [kodePc, setKodePc] = useState("");
   const [tanggal, setTanggal] = useState("2026-04-12");
-  const [operator1, setOperator1] = useState(seriOperators[0] ?? "");
-  const [operator2, setOperator2] = useState(seriOperators[1] ?? seriOperators[0] ?? "");
+  const [operator1, setOperator1] = useState("");
+  const [operator2, setOperator2] = useState("");
   const [selectedSku, setSelectedSku] = useState("");
   const [qtyIkatInput, setQtyIkatInput] = useState("");
   const [openModal, setOpenModal] = useState(false);
+  const seriOperators = masterData.operators.seri ?? [];
 
   useEffect(() => {
     async function syncRecords() {
-      const [cuttingRecords, nextSeriRecords] = await Promise.all([
-        getCuttingRecords(),
-        getSeriRecords()
-      ]);
-      const doneKodePc = cuttingRecords
-        .filter((record) =>
-          isKodePcComplete(
-            record,
-            nextSeriRecords.find((item) => item.kodePc === record.kodePc)
+      try {
+        const [nextMasterData, cuttingRecords, nextSeriRecords] = await Promise.all([
+          getMasterData(),
+          getCuttingRecords(),
+          getSeriRecords()
+        ]);
+        const doneKodePc = cuttingRecords
+          .filter((record) =>
+            isKodePcComplete(
+              record,
+              nextSeriRecords.find((item) => item.kodePc === record.kodePc)
+            )
           )
-        )
-        .map((record) => record.kodePc);
-      const nextAvailableRecords = cuttingRecords.filter(
-        (record) => !doneKodePc.includes(record.kodePc)
-      );
+          .map((record) => record.kodePc);
+        const nextAvailableRecords = cuttingRecords.filter(
+          (record) => !doneKodePc.includes(record.kodePc)
+        );
 
-      setSeriRecords(nextSeriRecords);
-      setCompletedKodePc(doneKodePc);
-      setAvailableCuttingRecords(nextAvailableRecords);
-      setKodePc((current) => {
-        if (
-          current &&
-          nextAvailableRecords.some((record) => record.kodePc === current)
-        ) {
-          return current;
-        }
+        setMasterData(nextMasterData);
+        setSeriRecords(nextSeriRecords);
+        setCompletedKodePc(doneKodePc);
+        setAvailableCuttingRecords(nextAvailableRecords);
+        setLoadError("");
+        setKodePc((current) => {
+          if (
+            current &&
+            nextAvailableRecords.some((record) => record.kodePc === current)
+          ) {
+            return current;
+          }
 
-        return nextAvailableRecords[0]?.kodePc ?? "";
-      });
+          return nextAvailableRecords[0]?.kodePc ?? "";
+        });
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Data Seri gagal dimuat.");
+        setAvailableCuttingRecords([]);
+        setSeriRecords([]);
+        setCompletedKodePc([]);
+      }
     }
 
     syncRecords();
@@ -140,11 +156,11 @@ export default function SeriPage() {
     }
 
     setQtyIkatInput("");
-  }, [cuttingRows, kodePc, selectedSeriRecord]);
+  }, [cuttingRows, kodePc, selectedSeriRecord, seriOperators]);
 
   const selectedRow =
     cuttingRows.find((row) => row.sku === selectedSku) ?? cuttingRows[0] ?? null;
-  const selectedMeta = selectedRow ? getSkuMetaBySku(selectedRow.sku) : null;
+  const selectedMeta = selectedRow ? getSkuMetaBySku(masterData.skuRows, selectedRow.sku) : null;
   const totalSavedForSelected = selectedRow
     ? Number(skuTotals[selectedRow.sku] ?? 0)
     : 0;
@@ -208,7 +224,11 @@ export default function SeriPage() {
     aksi: (
       <Button
         onClick={() => {
-          void deleteSeriEntry(kodePc, entry.entryId);
+          void deleteSeriEntry(kodePc, entry.entryId).catch((error) => {
+            window.alert(
+              error instanceof Error ? error.message : "Riwayat Seri gagal dihapus."
+            );
+          });
         }}
         small
         variant="warn"
@@ -256,6 +276,12 @@ export default function SeriPage() {
               ? "Semua Kode PC dari Cutting sudah selesai diproses di Seri."
               : "Belum ada data Cutting yang siap dipakai di Seri."}
           </div>
+        </FormCard>
+      ) : null}
+
+      {loadError ? (
+        <FormCard title="Status Database">
+          <div className="muted-box">{loadError}</div>
         </FormCard>
       ) : null}
 
@@ -384,6 +410,11 @@ export default function SeriPage() {
               <Button variant="success">Cetak Label</Button>
               <Button
                 onClick={() => {
+                  if (loadError) {
+                    window.alert(loadError);
+                    return;
+                  }
+
                   if (!selectedCutting || !kodePc || !selectedRow) {
                     window.alert("Pilih Kode PC dan SKU terlebih dahulu.");
                     return;
@@ -436,32 +467,36 @@ export default function SeriPage() {
                 return;
               }
 
-              const savedEntry = await saveSeriEntry(
-                {
-                  kodePc,
-                  noPo: selectedCutting.noPo,
-                  model: selectedCutting.model,
-                  kodePola: selectedCutting.kodePola ?? "",
-                  tanggal,
-                  operator1,
-                  operator2
-                },
-                {
-                  sku: selectedRow.sku,
-                  produk: selectedRow.produk,
-                  size: selectedRow.size,
-                  colour: selectedRow.colour,
-                  qtyIkat,
-                  kodeProduksi,
-                  jenis: getSkuMetaBySku(selectedRow.sku)?.type ?? "-"
-                }
-              );
+              try {
+                const savedEntry = await saveSeriEntry(
+                  {
+                    kodePc,
+                    noPo: selectedCutting.noPo,
+                    model: selectedCutting.model,
+                    kodePola: selectedCutting.kodePola ?? "",
+                    tanggal,
+                    operator1,
+                    operator2
+                  },
+                  {
+                    sku: selectedRow.sku,
+                    produk: selectedRow.produk,
+                    size: selectedRow.size,
+                    colour: selectedRow.colour,
+                    qtyIkat,
+                    kodeProduksi,
+                    jenis: getSkuMetaBySku(masterData.skuRows, selectedRow.sku)?.type ?? "-"
+                  }
+                );
 
-              setOpenModal(false);
-              setQtyIkatInput("");
-              window.alert(
-                `Data ikat disimpan.\nKode Produksi: ${savedEntry?.kodeProduksi ?? kodeProduksi}`
-              );
+                setOpenModal(false);
+                setQtyIkatInput("");
+                window.alert(
+                  `Data ikat disimpan.\nKode Produksi: ${savedEntry?.kodeProduksi ?? kodeProduksi}`
+                );
+              } catch (error) {
+                window.alert(error instanceof Error ? error.message : "Data Seri gagal disimpan.");
+              }
               })();
             }}
             open={openModal}

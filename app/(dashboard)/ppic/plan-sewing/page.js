@@ -16,7 +16,7 @@ import {
   TextInput,
   SelectInput
 } from "@/components/ui";
-import { formatCode } from "@/lib/mock-data";
+import { formatCode } from "@/lib/master-data-client";
 import { getPlanCuttingRecords } from "@/lib/plan-cutting-storage";
 import { getRackingRecords } from "@/lib/racking-storage";
 import {
@@ -68,6 +68,7 @@ function generatePlanSewingNoPo(dateValue) {
 }
 
 export default function PlanSewingPage() {
+  const [loadError, setLoadError] = useState("");
   const [planCuttingRecords, setPlanCuttingRecords] = useState([]);
   const [usedKodePc, setUsedKodePc] = useState([]);
   const [rackingRecords, setRackingRecords] = useState([]);
@@ -79,28 +80,36 @@ export default function PlanSewingPage() {
 
   useEffect(() => {
     async function syncRecords() {
-      const [planRecords, usedKode, nextRackingRecords] = await Promise.all([
-        getPlanCuttingRecords(),
-        getUsedPlanSewingKodePc(),
-        getRackingRecords()
-      ]);
-      const availableRecords = planRecords.filter(
-        (record) => !usedKode.includes(record.kodePc)
-      );
+      try {
+        const [planRecords, usedKode, nextRackingRecords] = await Promise.all([
+          getPlanCuttingRecords(),
+          getUsedPlanSewingKodePc(),
+          getRackingRecords()
+        ]);
+        const availableRecords = planRecords.filter(
+          (record) => !usedKode.includes(record.kodePc)
+        );
 
-      setPlanCuttingRecords(availableRecords);
-      setUsedKodePc(usedKode);
-      setRackingRecords(nextRackingRecords);
-      setKodePc((current) => {
-        if (
-          current &&
-          availableRecords.some((record) => record.kodePc === current)
-        ) {
-          return current;
-        }
+        setPlanCuttingRecords(availableRecords);
+        setUsedKodePc(usedKode);
+        setRackingRecords(nextRackingRecords);
+        setLoadError("");
+        setKodePc((current) => {
+          if (
+            current &&
+            availableRecords.some((record) => record.kodePc === current)
+          ) {
+            return current;
+          }
 
-        return availableRecords[0]?.kodePc ?? "";
-      });
+          return availableRecords[0]?.kodePc ?? "";
+        });
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Data Plan Sewing gagal dimuat.");
+        setPlanCuttingRecords([]);
+        setUsedKodePc([]);
+        setRackingRecords([]);
+      }
     }
 
     syncRecords();
@@ -323,6 +332,12 @@ export default function PlanSewingPage() {
         ) : null}
       </FormCard>
 
+      {loadError ? (
+        <FormCard title="Status Database">
+          <div className="muted-box">{loadError}</div>
+        </FormCard>
+      ) : null}
+
       {isReady ? (
         <FormCard title="Data SKU - isi Qty Plan Sewing">
           <DataTable columns={columns} rows={tableRows} />
@@ -341,6 +356,11 @@ export default function PlanSewingPage() {
       <ActionRow>
         <Button
           onClick={() => {
+            if (loadError) {
+              window.alert(loadError);
+              return;
+            }
+
             if (!selectedPlan || !kodePc || !noPo || !kodePs) {
               window.alert("Pilih Kode PC dan tanggal terlebih dahulu.");
               return;

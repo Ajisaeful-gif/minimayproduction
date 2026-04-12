@@ -16,10 +16,10 @@ import {
   SelectInput
 } from "@/components/ui";
 import {
-  cuttingOperators,
+  getMasterData,
   cuttingSizeOrder,
   normalizeCuttingSize
-} from "@/lib/mock-data";
+} from "@/lib/master-data-client";
 import { getPlanCuttingRecords } from "@/lib/plan-cutting-storage";
 import {
   getUsedCuttingKodePc,
@@ -33,38 +33,52 @@ function buildCuttingMap(rows = []) {
 }
 
 export default function CuttingPage() {
+  const [masterData, setMasterData] = useState({
+    operators: { cutting: [], seri: [], racking: [], sewing: [] }
+  });
+  const [loadError, setLoadError] = useState("");
   const [planCuttingRecords, setPlanCuttingRecords] = useState([]);
   const [usedKodePc, setUsedKodePc] = useState([]);
   const [kodePc, setKodePc] = useState("");
   const [tanggal, setTanggal] = useState("2026-04-11");
-  const [pemotong, setPemotong] = useState(cuttingOperators[0]);
-  const [penggelar, setPenggelar] = useState(cuttingOperators[1]);
+  const [pemotong, setPemotong] = useState("");
+  const [penggelar, setPenggelar] = useState("");
   const [meja, setMeja] = useState("2");
   const [cuttingMap, setCuttingMap] = useState({});
   const [openModal, setOpenModal] = useState(false);
+  const cuttingOperators = masterData.operators.cutting ?? [];
 
   useEffect(() => {
     async function syncRecords() {
-      const [records, usedKode] = await Promise.all([
-        getPlanCuttingRecords(),
-        getUsedCuttingKodePc()
-      ]);
-      const availableRecords = records.filter(
-        (record) => !usedKode.includes(record.kodePc)
-      );
+      try {
+        const [nextMasterData, records, usedKode] = await Promise.all([
+          getMasterData(),
+          getPlanCuttingRecords(),
+          getUsedCuttingKodePc()
+        ]);
+        const availableRecords = records.filter(
+          (record) => !usedKode.includes(record.kodePc)
+        );
 
-      setPlanCuttingRecords(availableRecords);
-      setUsedKodePc(usedKode);
-      setKodePc((current) => {
-        if (
-          current &&
-          availableRecords.some((record) => record.kodePc === current)
-        ) {
-          return current;
-        }
+        setMasterData(nextMasterData);
+        setPlanCuttingRecords(availableRecords);
+        setUsedKodePc(usedKode);
+        setLoadError("");
+        setKodePc((current) => {
+          if (
+            current &&
+            availableRecords.some((record) => record.kodePc === current)
+          ) {
+            return current;
+          }
 
-        return availableRecords[0]?.kodePc ?? "";
-      });
+          return availableRecords[0]?.kodePc ?? "";
+        });
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Data Cutting gagal dimuat.");
+        setPlanCuttingRecords([]);
+        setUsedKodePc([]);
+      }
     }
 
     syncRecords();
@@ -78,6 +92,15 @@ export default function CuttingPage() {
       window.removeEventListener("storage", syncRecords);
     };
   }, []);
+
+  useEffect(() => {
+    if (!cuttingOperators.length) {
+      return;
+    }
+
+    setPemotong((current) => current || cuttingOperators[0] || "");
+    setPenggelar((current) => current || cuttingOperators[1] || cuttingOperators[0] || "");
+  }, [cuttingOperators]);
 
   const selectedPlan =
     planCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
@@ -221,6 +244,12 @@ export default function CuttingPage() {
           </SelectInput>
         </Field>
       </FormCard>
+
+      {loadError ? (
+        <FormCard title="Status Database">
+          <div className="muted-box">{loadError}</div>
+        </FormCard>
+      ) : null}
 
       {!planCuttingRecords.length ? (
         <FormCard title="Status Kode PC">
@@ -388,6 +417,11 @@ export default function CuttingPage() {
       <ActionRow>
         <Button
           onClick={() => {
+            if (loadError) {
+              window.alert(loadError);
+              return;
+            }
+
             if (!selectedPlan || !kodePc) {
               window.alert("Pilih Kode PC terlebih dahulu.");
               return;
@@ -413,20 +447,24 @@ export default function CuttingPage() {
 
           const rows = buildCuttingRows();
 
-          await saveCuttingRecord({
-            kodePc,
-            noPo: selectedPlan.noPo,
-            model: selectedPlan.model,
-            kodePola: selectedPlan.kodePola ?? "",
-            tanggal,
-            pemotong,
-            penggelar,
-            meja,
-            rows
-          });
+          try {
+            await saveCuttingRecord({
+              kodePc,
+              noPo: selectedPlan.noPo,
+              model: selectedPlan.model,
+              kodePola: selectedPlan.kodePola ?? "",
+              tanggal,
+              pemotong,
+              penggelar,
+              meja,
+              rows
+            });
 
-          setOpenModal(false);
-          window.alert(`Data Cutting disimpan.\nKode PC: ${kodePc}`);
+            setOpenModal(false);
+            window.alert(`Data Cutting disimpan.\nKode PC: ${kodePc}`);
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : "Data Cutting gagal disimpan.");
+          }
           })();
         }}
         open={openModal}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActionRow,
   Badge,
@@ -15,12 +15,12 @@ import {
   TextInput
 } from "@/components/ui";
 import {
-  formatCode,
+  getMasterData,
   getJenisKainByModel,
   getKodePolaByModel,
   getRowsByModel,
-  modelOptions
-} from "@/lib/mock-data";
+  formatCode
+} from "@/lib/master-data-client";
 import { savePlanCuttingRecord } from "@/lib/plan-cutting-storage";
 
 function getWeekLetter(dateValue) {
@@ -77,26 +77,60 @@ function getWeekdayIndex(dateValue) {
 }
 
 export default function PlanCuttingPage() {
-  const initialModel = modelOptions[0]?.value ?? "";
   const [tanggal, setTanggal] = useState("2026-04-11");
   const [noPo, setNoPo] = useState(generatePlanCuttingNoPo("2026-04-11"));
-  const [model, setModel] = useState(initialModel);
-  const [modelSearch, setModelSearch] = useState(initialModel);
-  const [kodePola, setKodePola] = useState(
-    getKodePolaByModel(initialModel)
-  );
-  const [jenisKain, setJenisKain] = useState(
-    getJenisKainByModel(initialModel)
-  );
-  const [qtyMap, setQtyMap] = useState(() =>
-    Object.fromEntries(getRowsByModel(initialModel).map((row) => [row.sku, row.qtyPlan]))
-  );
+  const [masterData, setMasterData] = useState({
+    skuRows: [],
+    kodePolaRows: [],
+    jenisKainRows: [],
+    modelOptions: [],
+    operators: { cutting: [], seri: [], racking: [], sewing: [] }
+  });
+  const [masterError, setMasterError] = useState("");
+  const [model, setModel] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
+  const [kodePola, setKodePola] = useState("");
+  const [jenisKain, setJenisKain] = useState("");
+  const [qtyMap, setQtyMap] = useState({});
   const [openModal, setOpenModal] = useState(false);
   const [tanggalInfo, setTanggalInfo] = useState(
     "Tanggal bisa dipilih dari Senin sampai Sabtu. Hari Minggu tidak digunakan untuk Plan Cutting."
   );
 
-  const rows = getRowsByModel(model);
+  useEffect(() => {
+    let active = true;
+
+    async function loadMasterData() {
+      try {
+        const data = await getMasterData();
+
+        if (!active) {
+          return;
+        }
+
+        setMasterData(data);
+        setMasterError("");
+
+        if (!model && data.modelOptions.length) {
+          applySelectedModel(data.modelOptions[0].value, data);
+        }
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setMasterError(error instanceof Error ? error.message : "Master data gagal dimuat.");
+      }
+    }
+
+    loadMasterData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const rows = getRowsByModel(masterData.skuRows, model);
   const kodePc = formatCode("PC", noPo, model);
 
   function resolveExactModel(keyword) {
@@ -106,21 +140,21 @@ export default function PlanCuttingPage() {
       return "";
     }
 
-    const matched = modelOptions.find(
+    const matched = masterData.modelOptions.find(
       (item) => item.value.trim().toLowerCase() === normalizedKeyword
     );
 
     return matched?.value ?? "";
   }
 
-  function applySelectedModel(nextModel) {
+  function applySelectedModel(nextModel, sourceData = masterData) {
     setModel(nextModel);
     setModelSearch(nextModel);
-    setKodePola(getKodePolaByModel(nextModel));
-    setJenisKain(getJenisKainByModel(nextModel));
+    setKodePola(getKodePolaByModel(sourceData.kodePolaRows, nextModel));
+    setJenisKain(getJenisKainByModel(sourceData.jenisKainRows, nextModel));
     setQtyMap(
       Object.fromEntries(
-        getRowsByModel(nextModel).map((row) => [row.sku, row.qtyPlan])
+        getRowsByModel(sourceData.skuRows, nextModel).map((row) => [row.sku, row.qtyPlan])
       )
     );
   }
@@ -194,7 +228,7 @@ export default function PlanCuttingPage() {
           <Field badge={{ label: "Search", variant: "dropdown" }} label="Nama Model" required>
             <SearchableCombobox
               emptyMessage="Model tidak ditemukan."
-              items={modelOptions}
+              items={masterData.modelOptions}
               onSearchChange={(nextSearch) => {
                 setModelSearch(nextSearch);
 
@@ -276,6 +310,12 @@ export default function PlanCuttingPage() {
         </div>
       </FormCard>
 
+      {masterError ? (
+        <FormCard title="Status Database">
+          <div className="muted-box">{masterError}</div>
+        </FormCard>
+      ) : null}
+
       <FormCard
         action={<Badge variant="success">SKU Aktif {rows.length}</Badge>}
         title="Qty per SKU"
@@ -290,6 +330,11 @@ export default function PlanCuttingPage() {
       <ActionRow>
         <Button
           onClick={() => {
+            if (masterError) {
+              window.alert(masterError);
+              return;
+            }
+
             if (!tanggal || !noPo || !model || !kodePc) {
               window.alert("Lengkapi tanggal dan model terlebih dahulu.");
               return;
@@ -315,6 +360,11 @@ export default function PlanCuttingPage() {
         onClose={() => setOpenModal(false)}
         onConfirm={() => {
           (async () => {
+          if (masterError) {
+            window.alert(masterError);
+            return;
+          }
+
           const savedRows = buildSavedRows();
 
           if (!tanggal || !noPo || !model || !kodePc) {
@@ -327,19 +377,23 @@ export default function PlanCuttingPage() {
             return;
           }
 
-            await savePlanCuttingRecord({
-              id: kodePc,
-              kodePc,
-              noPo,
-              model,
-              tanggal,
-              kodePola,
-              jenisKain,
-              rows: savedRows
-            });
+            try {
+              await savePlanCuttingRecord({
+                id: kodePc,
+                kodePc,
+                noPo,
+                model,
+                tanggal,
+                kodePola,
+                jenisKain,
+                rows: savedRows
+              });
 
-            setOpenModal(false);
-            window.alert(`Plan Cutting disimpan.\nKode PC: ${kodePc}`);
+              setOpenModal(false);
+              window.alert(`Plan Cutting disimpan.\nKode PC: ${kodePc}`);
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : "Plan Cutting gagal disimpan.");
+            }
           })();
         }}
         open={openModal}

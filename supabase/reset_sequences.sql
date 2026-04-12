@@ -1,0 +1,16 @@
+select setval(pg_get_serial_sequence('sku_master', 'id'), coalesce((select max(id) from sku_master), 1), true);
+select setval(pg_get_serial_sequence('kode_pola_master', 'id'), coalesce((select max(id) from kode_pola_master), 1), true);
+select setval(pg_get_serial_sequence('jenis_kain_master', 'id'), coalesce((select max(id) from jenis_kain_master), 1), true);
+select setval(pg_get_serial_sequence('operator_master', 'id'), coalesce((select max(id) from operator_master), 1), true);
+select setval(pg_get_serial_sequence('plan_cutting', 'id'), coalesce((select max(id) from plan_cutting), 1), true);
+select setval(pg_get_serial_sequence('plan_cutting_row', 'id'), coalesce((select max(id) from plan_cutting_row), 1), true);
+select setval(pg_get_serial_sequence('cutting', 'id'), coalesce((select max(id) from cutting), 1), true);
+select setval(pg_get_serial_sequence('cutting_row', 'id'), coalesce((select max(id) from cutting_row), 1), true);
+select setval(pg_get_serial_sequence('seri', 'id'), coalesce((select max(id) from seri), 1), true);
+select setval(pg_get_serial_sequence('seri_entry', 'id'), coalesce((select max(id) from seri_entry), 1), true);
+select setval(pg_get_serial_sequence('racking', 'id'), coalesce((select max(id) from racking), 1), true);
+select setval(pg_get_serial_sequence('racking_row', 'id'), coalesce((select max(id) from racking_row), 1), true);
+select setval(pg_get_serial_sequence('plan_sewing', 'id'), coalesce((select max(id) from plan_sewing), 1), true);
+select setval(pg_get_serial_sequence('plan_sewing_row', 'id'), coalesce((select max(id) from plan_sewing_row), 1), true);
+select setval(pg_get_serial_sequence('supply', 'id'), coalesce((select max(id) from supply), 1), true);
+select setval(pg_get_serial_sequence('supply_row', 'id'), coalesce((select max(id) from supply_row), 1), true);
