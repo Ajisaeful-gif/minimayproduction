@@ -1,0 +1,1 @@
+ALTER TABLE "racking" ADD COLUMN "no_po" text;
