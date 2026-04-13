@@ -11,6 +11,7 @@ import {
   ModalConfirm,
   PageHeader,
   SearchableCombobox,
+  SelectInput,
   Tag,
   TextInput
 } from "@/components/ui";
@@ -76,6 +77,45 @@ function getWeekdayIndex(dateValue) {
   return date.getDay();
 }
 
+function getColourOptionsByModel(skuRows, model) {
+  if (!model) {
+    return [];
+  }
+
+  return [...new Set(getRowsByModel(skuRows, model).map((row) => row.colour).filter(Boolean))]
+    .map((value) => ({ value }))
+    .sort((left, right) =>
+      String(left.value ?? "").localeCompare(String(right.value ?? ""), undefined, {
+        numeric: true,
+        sensitivity: "base"
+      })
+    );
+}
+
+function getRowsByModelAndColour(skuRows, model, colour) {
+  if (!model || !colour) {
+    return [];
+  }
+
+  return getRowsByModel(skuRows, model).filter((row) => row.colour === colour);
+}
+
+function buildPlanCuttingCode(noPo, model, colour) {
+  const baseCode = formatCode("PC", noPo, model);
+  const colourShort = String(colour ?? "")
+    .trim()
+    .split(/\s+/)[0]
+    ?.replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 6);
+
+  if (!baseCode) {
+    return "";
+  }
+
+  return colourShort ? `${baseCode}-${colourShort}` : baseCode;
+}
+
 export default function PlanCuttingPage() {
   const [tanggal, setTanggal] = useState("2026-04-11");
   const [noPo, setNoPo] = useState(generatePlanCuttingNoPo("2026-04-11"));
@@ -89,13 +129,11 @@ export default function PlanCuttingPage() {
   const [masterError, setMasterError] = useState("");
   const [model, setModel] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  const [colour, setColour] = useState("");
   const [kodePola, setKodePola] = useState("");
   const [jenisKain, setJenisKain] = useState("");
   const [qtyMap, setQtyMap] = useState({});
   const [openModal, setOpenModal] = useState(false);
-  const [tanggalInfo, setTanggalInfo] = useState(
-    "Tanggal bisa dipilih dari Senin sampai Sabtu. Hari Minggu tidak digunakan untuk Plan Cutting."
-  );
 
   useEffect(() => {
     let active = true;
@@ -130,8 +168,9 @@ export default function PlanCuttingPage() {
     };
   }, []);
 
-  const rows = getRowsByModel(masterData.skuRows, model);
-  const kodePc = formatCode("PC", noPo, model);
+  const colourOptions = getColourOptionsByModel(masterData.skuRows, model);
+  const rows = getRowsByModelAndColour(masterData.skuRows, model, colour);
+  const kodePc = buildPlanCuttingCode(noPo, model, colour);
 
   function resolveExactModel(keyword) {
     const normalizedKeyword = String(keyword ?? "").trim().toLowerCase();
@@ -147,15 +186,27 @@ export default function PlanCuttingPage() {
     return matched?.value ?? "";
   }
 
+  function applySelectedColour(nextColour, nextModel = model, sourceData = masterData) {
+    const nextRows = getRowsByModelAndColour(sourceData.skuRows, nextModel, nextColour);
+
+    setColour(nextColour);
+    setQtyMap(
+      Object.fromEntries(nextRows.map((row) => [row.sku, Number(row.qtyPlan ?? 0)]))
+    );
+  }
+
   function applySelectedModel(nextModel, sourceData = masterData) {
+    const availableColours = getColourOptionsByModel(sourceData.skuRows, nextModel);
+    const nextColour = availableColours[0]?.value ?? "";
+    const nextRows = getRowsByModelAndColour(sourceData.skuRows, nextModel, nextColour);
+
     setModel(nextModel);
     setModelSearch(nextModel);
+    setColour(nextColour);
     setKodePola(getKodePolaByModel(sourceData.kodePolaRows, nextModel));
     setJenisKain(getJenisKainByModel(sourceData.jenisKainRows, nextModel));
     setQtyMap(
-      Object.fromEntries(
-        getRowsByModel(sourceData.skuRows, nextModel).map((row) => [row.sku, row.qtyPlan])
-      )
+      Object.fromEntries(nextRows.map((row) => [row.sku, Number(row.qtyPlan ?? 0)]))
     );
   }
 
@@ -241,6 +292,7 @@ export default function PlanCuttingPage() {
 
                 if (nextSearch !== model) {
                   setModel("");
+                  setColour("");
                   setKodePola("");
                   setJenisKain("");
                   setQtyMap({});
@@ -253,39 +305,45 @@ export default function PlanCuttingPage() {
             />
           </Field>
 
+          <Field badge={{ label: "Dropdown", variant: "dropdown" }} label="Colour" required>
+            <SelectInput
+              disabled={!model || !colourOptions.length}
+              onChange={(event) => applySelectedColour(event.target.value)}
+              value={colour}
+            >
+              <option value="">
+                {model ? "-- Pilih Colour dari Master SKU --" : "-- Pilih Model terlebih dahulu --"}
+              </option>
+              {colourOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.value}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+
           <Field badge={{ label: "Manual", variant: "manual" }} label="Tanggal">
-            <div className="stack" style={{ gap: "8px" }}>
-              <TextInput
-                onChange={(event) => {
-                  const nextDate = event.target.value;
+            <TextInput
+              onChange={(event) => {
+                const nextDate = event.target.value;
 
-                  if (!nextDate) {
-                    setTanggal("");
-                    setNoPo("");
-                    setTanggalInfo(
-                      "Pilih tanggal Plan Cutting. Tanggal yang diperbolehkan adalah Senin sampai Sabtu."
-                    );
-                    return;
-                  }
+                if (!nextDate) {
+                  setTanggal("");
+                  setNoPo("");
+                  return;
+                }
 
-                  if (getWeekdayIndex(nextDate) === 0) {
-                    setTanggalInfo(
-                      "Hari Minggu tidak bisa dipilih. Silakan pilih tanggal Senin sampai Sabtu."
-                    );
-                    return;
-                  }
+                if (getWeekdayIndex(nextDate) === 0) {
+                  window.alert("Hari Minggu tidak bisa dipilih. Silakan pilih Senin sampai Sabtu.");
+                  return;
+                }
 
-                  setTanggal(nextDate);
-                  setNoPo(generatePlanCuttingNoPo(nextDate));
-                  setTanggalInfo(
-                    "Tanggal aktif valid untuk Plan Cutting. No PO dihitung dari tanggal efektif + 1 minggu, dengan range kerja Senin sampai Sabtu."
-                  );
-                }}
-                type="date"
-                value={tanggal}
-              />
-              <div className="muted-box">{tanggalInfo}</div>
-            </div>
+                setTanggal(nextDate);
+                setNoPo(generatePlanCuttingNoPo(nextDate));
+              }}
+              type="date"
+              value={tanggal}
+            />
           </Field>
 
           <Field badge={{ label: "Auto Fill", variant: "auto" }} label="Kode Pola">
@@ -322,7 +380,7 @@ export default function PlanCuttingPage() {
       >
         <DataTable
           columns={columns}
-          emptyMessage="Pilih model terlebih dahulu."
+          emptyMessage="Pilih model dan colour terlebih dahulu."
           rows={tableRows}
         />
       </FormCard>
@@ -335,8 +393,8 @@ export default function PlanCuttingPage() {
               return;
             }
 
-            if (!tanggal || !noPo || !model || !kodePc) {
-              window.alert("Lengkapi tanggal dan model terlebih dahulu.");
+            if (!tanggal || !noPo || !model || !colour || !kodePc) {
+              window.alert("Lengkapi tanggal, model, dan colour terlebih dahulu.");
               return;
             }
 
@@ -367,8 +425,8 @@ export default function PlanCuttingPage() {
 
           const savedRows = buildSavedRows();
 
-          if (!tanggal || !noPo || !model || !kodePc) {
-            window.alert("Lengkapi tanggal dan model terlebih dahulu.");
+          if (!tanggal || !noPo || !model || !colour || !kodePc) {
+            window.alert("Lengkapi tanggal, model, dan colour terlebih dahulu.");
             return;
           }
 
@@ -400,7 +458,7 @@ export default function PlanCuttingPage() {
         title="Konfirmasi Simpan Plan Cutting"
       >
         <div className="stack" style={{ gap: "12px" }}>
-          <div className="summary-grid three">
+          <div className="summary-grid four">
             <div className="summary-card">
               <span className="summary-label">Kode PC</span>
               <strong>{kodePc || "-"}</strong>
@@ -412,6 +470,10 @@ export default function PlanCuttingPage() {
             <div className="summary-card">
               <span className="summary-label">Model</span>
               <strong>{model || "-"}</strong>
+            </div>
+            <div className="summary-card">
+              <span className="summary-label">Colour</span>
+              <strong>{colour || "-"}</strong>
             </div>
           </div>
           <div className="muted-box">
