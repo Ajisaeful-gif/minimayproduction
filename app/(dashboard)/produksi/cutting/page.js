@@ -32,6 +32,19 @@ function buildCuttingMap(rows = []) {
   );
 }
 
+function areNumberMapsEqual(currentMap, nextMap) {
+  const currentKeys = Object.keys(currentMap);
+  const nextKeys = Object.keys(nextMap);
+
+  if (currentKeys.length !== nextKeys.length) {
+    return false;
+  }
+
+  return nextKeys.every((key) => Number(currentMap[key] ?? 0) === Number(nextMap[key] ?? 0));
+}
+
+const EMPTY_ROWS = [];
+
 export default function CuttingPage() {
   const [masterData, setMasterData] = useState({
     operators: { cutting: [], seri: [], racking: [], sewing: [] }
@@ -104,10 +117,14 @@ export default function CuttingPage() {
 
   const selectedPlan =
     planCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
-  const planRows = selectedPlan?.rows ?? [];
+  const planRows = selectedPlan?.rows ?? EMPTY_ROWS;
 
   useEffect(() => {
-    setCuttingMap(buildCuttingMap(planRows));
+    const nextCuttingMap = buildCuttingMap(planRows);
+
+    setCuttingMap((current) =>
+      areNumberMapsEqual(current, nextCuttingMap) ? current : nextCuttingMap
+    );
   }, [planRows]);
 
   const isReady = Boolean(kodePc.trim());

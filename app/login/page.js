@@ -13,17 +13,38 @@ import { useAuth } from "@/components/auth-provider";
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { authError, loading, role, session, signIn } = useAuth();
+  const { authEnabled, authError, loading, role, session, signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
+    if (!authEnabled) {
+      router.replace("/dashboard");
+      return;
+    }
+
     if (!loading && session && role) {
       const nextPath = searchParams.get("next");
       router.replace(nextPath || resolveLandingPath(role));
     }
-  }, [loading, role, router, searchParams, session]);
+  }, [authEnabled, loading, role, router, searchParams, session]);
+
+  if (!authEnabled) {
+    return (
+      <div className="auth-state-shell">
+        <div className="auth-state-card">
+          <p className="section-title">Guest Mode</p>
+          <h1 className="page-title" style={{ marginTop: "8px" }}>
+            Login sementara dinonaktifkan
+          </h1>
+          <p className="page-description">
+            Anda akan diarahkan langsung ke dashboard tanpa proses login.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { resolveLandingPath } from "@/lib/auth";
 import {
   dashboardItem,
   findNavigationItem,
@@ -365,8 +364,8 @@ export default function DashboardShell({ children }) {
   const router = useRouter();
   const active = findNavigationItem(pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { profile, role, signOut, user } = useAuth();
-  const effectiveRole = role || "admin";
+  const { authEnabled, profile, role, signOut, user } = useAuth();
+  const effectiveRole = role || (authEnabled ? "" : "admin");
   const topbarLabel =
     active?.group.key === "dashboard"
       ? "Dashboard"
@@ -385,9 +384,27 @@ export default function DashboardShell({ children }) {
       : effectiveRole === "produksi"
         ? "Produksi"
         : "Minimay");
-  const userName = profile?.nama || user?.email || "Mode Lokal";
+  const userName = authEnabled
+    ? profile?.nama || user?.email || "Mode Lokal"
+    : "Guest Mode";
+  const userRoleLabel = !authEnabled
+    ? "Guest"
+    : role
+      ? effectiveRole === "admin"
+        ? "Admin"
+        : effectiveRole === "ppic"
+          ? "PPIC"
+          : effectiveRole === "produksi"
+            ? "Produksi"
+            : "User"
+      : "Tanpa Login";
 
   async function handleLogout() {
+    if (!authEnabled) {
+      router.replace("/dashboard");
+      return;
+    }
+
     await signOut();
     router.replace("/login");
   }
@@ -407,17 +424,7 @@ export default function DashboardShell({ children }) {
           <div className="topbar-actions">
             <div className="topbar-user-card">
               <p className="topbar-user-name">{userName}</p>
-              <p className="topbar-user-role">
-                {role
-                  ? effectiveRole === "admin"
-                  ? "Admin"
-                  : effectiveRole === "ppic"
-                    ? "PPIC"
-                    : effectiveRole === "produksi"
-                      ? "Produksi"
-                      : "User"
-                  : "Tanpa Login"}
-              </p>
+              <p className="topbar-user-role">{userRoleLabel}</p>
             </div>
             {user ? (
               <button className="button" onClick={handleLogout} type="button">

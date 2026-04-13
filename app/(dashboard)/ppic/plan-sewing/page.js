@@ -67,6 +67,19 @@ function generatePlanSewingNoPo(dateValue) {
   return `PS${month}${weekLetter}${year}`;
 }
 
+function areNumberMapsEqual(currentMap, nextMap) {
+  const currentKeys = Object.keys(currentMap);
+  const nextKeys = Object.keys(nextMap);
+
+  if (currentKeys.length !== nextKeys.length) {
+    return false;
+  }
+
+  return nextKeys.every((key) => Number(currentMap[key] ?? 0) === Number(nextMap[key] ?? 0));
+}
+
+const EMPTY_ROWS = [];
+
 export default function PlanSewingPage() {
   const [loadError, setLoadError] = useState("");
   const [planCuttingRecords, setPlanCuttingRecords] = useState([]);
@@ -129,7 +142,7 @@ export default function PlanSewingPage() {
   const selectedPlan =
     planCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
   const model = selectedPlan?.model ?? "";
-  const rows = selectedPlan?.rows ?? [];
+  const rows = selectedPlan?.rows ?? EMPTY_ROWS;
   const relatedRacking =
     rackingRecords.find((record) => record.kodePc === kodePc) ?? null;
   const rackingQtyMap = useMemo(() => {
@@ -145,15 +158,17 @@ export default function PlanSewingPage() {
   const hasRackingData = Boolean(relatedRacking);
 
   useEffect(() => {
-    setQtyMap(
-      Object.fromEntries(
-        rows.map((row) => [
-          row.sku,
-          hasRackingData
-            ? Number(rackingQtyMap[row.sku] ?? 0)
-            : Number(row.qtyPlan ?? 0)
-        ])
-      )
+    const nextQtyMap = Object.fromEntries(
+      rows.map((row) => [
+        row.sku,
+        hasRackingData
+          ? Number(rackingQtyMap[row.sku] ?? 0)
+          : Number(row.qtyPlan ?? 0)
+      ])
+    );
+
+    setQtyMap((current) =>
+      areNumberMapsEqual(current, nextQtyMap) ? current : nextQtyMap
     );
   }, [hasRackingData, kodePc, rackingQtyMap, rows]);
 

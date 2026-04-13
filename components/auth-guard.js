@@ -8,10 +8,10 @@ import { useAuth } from "@/components/auth-provider";
 export default function AuthGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { authError, loading, role, session } = useAuth();
+  const { authEnabled, authError, loading, role, session } = useAuth();
 
   useEffect(() => {
-    if (loading) {
+    if (!authEnabled || loading) {
       return;
     }
 
@@ -24,7 +24,11 @@ export default function AuthGuard({ children }) {
     if (role && !canAccessPath(role, pathname)) {
       router.replace(resolveLandingPath(role));
     }
-  }, [loading, pathname, role, router, session]);
+  }, [authEnabled, loading, pathname, role, router, session]);
+
+  if (!authEnabled) {
+    return children;
+  }
 
   if (loading) {
     return (

@@ -53,6 +53,9 @@ function isKodePcComplete(cuttingRecord, seriRecord) {
   );
 }
 
+const EMPTY_ROWS = [];
+const EMPTY_ENTRIES = [];
+
 export default function SeriPage() {
   const [masterData, setMasterData] = useState({
     skuRows: [],
@@ -130,8 +133,8 @@ export default function SeriPage() {
     availableCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
   const selectedSeriRecord =
     seriRecords.find((record) => record.kodePc === kodePc) ?? null;
-  const cuttingRows = selectedCutting?.rows ?? [];
-  const historyEntries = selectedSeriRecord?.entries ?? [];
+  const cuttingRows = selectedCutting?.rows ?? EMPTY_ROWS;
+  const historyEntries = selectedSeriRecord?.entries ?? EMPTY_ENTRIES;
   const skuTotals = useMemo(() => buildSkuTotals(historyEntries), [historyEntries]);
 
   useEffect(() => {

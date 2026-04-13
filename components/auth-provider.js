@@ -13,6 +13,7 @@ import {
   resolveLandingPath,
   resolveRoleFromAuth
 } from "@/lib/auth";
+import { isAuthEnabled } from "@/lib/env";
 
 const AuthContext = createContext(null);
 
@@ -60,7 +61,34 @@ async function fetchProfile() {
   return response.json();
 }
 
-export function AuthProvider({ children }) {
+function GuestAuthProvider({ children }) {
+  const value = useMemo(
+    () => ({
+      authEnabled: false,
+      session: null,
+      user: null,
+      profile: null,
+      role: "admin",
+      loading: false,
+      authError: "",
+      async signIn() {
+        return {
+          error: new Error("Login sementara dinonaktifkan.")
+        };
+      },
+      async signOut() {
+        return {
+          ok: true
+        };
+      }
+    }),
+    []
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function EnabledAuthProvider({ children }) {
   const sessionState = authClient.useSession();
   const [profile, setProfile] = useState(null);
   const [role, setRole] = useState("");
@@ -148,6 +176,7 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      authEnabled: true,
       session,
       user,
       profile,
@@ -227,6 +256,14 @@ export function AuthProvider({ children }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function AuthProvider({ children }) {
+  if (!isAuthEnabled) {
+    return <GuestAuthProvider>{children}</GuestAuthProvider>;
+  }
+
+  return <EnabledAuthProvider>{children}</EnabledAuthProvider>;
 }
 
 export function useAuth() {
