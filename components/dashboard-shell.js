@@ -344,16 +344,6 @@ function SidebarContent({ pathname, role, onNavigate }) {
           })}
         </nav>
 
-        <div className="sidebar-footer">
-          <p className="sidebar-footer-label">Deploy Siap</p>
-          <p className="sidebar-footer-copy">
-            Frontend: Vercel
-            <br />
-            Backend: Next.js API
-            <br />
-            Database: PostgreSQL
-          </p>
-        </div>
       </div>
     </div>
   );
