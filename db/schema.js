@@ -246,6 +246,9 @@ export const cutting = pgTable(
     pemotong: text("pemotong"),
     penggelar: text("penggelar"),
     meja: text("meja"),
+    cekWarnaPola: text("cek_warna_pola"),
+    cekMarker: text("cek_marker"),
+    validasiData: text("validasi_data"),
     status: processStatusEnum("status").default("selesai").notNull(),
     createdBy: text("created_by").references(() => users.id),
     ...timestamps

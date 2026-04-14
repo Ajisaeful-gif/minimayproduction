@@ -16,56 +16,11 @@ import {
   TextInput,
   SelectInput
 } from "@/components/ui";
+import { normalizeColourKey } from "@/lib/colour-format";
 import { formatCode } from "@/lib/master-data-client";
 import { getPlanCuttingRecords } from "@/lib/plan-cutting-storage";
+import { getPlanSewingRecords, savePlanSewingRecord } from "@/lib/plan-sewing-storage";
 import { getRackingRecords } from "@/lib/racking-storage";
-import {
-  getUsedPlanSewingKodePc,
-  savePlanSewingRecord
-} from "@/lib/plan-sewing-storage";
-
-function getWeekLetter(dateValue) {
-  const day = dateValue.getDate();
-
-  if (day <= 7) {
-    return "A";
-  }
-
-  if (day <= 14) {
-    return "B";
-  }
-
-  if (day <= 21) {
-    return "C";
-  }
-
-  if (day <= 28) {
-    return "D";
-  }
-
-  return "E";
-}
-
-function generatePlanSewingNoPo(dateValue) {
-  if (!dateValue) {
-    return "";
-  }
-
-  const date = new Date(`${dateValue}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const effectiveDate = new Date(date);
-  effectiveDate.setDate(effectiveDate.getDate() + 7);
-
-  const month = effectiveDate.getMonth() + 1;
-  const weekLetter = getWeekLetter(effectiveDate);
-  const year = String(effectiveDate.getFullYear()).slice(-2);
-
-  return `PS${month}${weekLetter}${year}`;
-}
 
 function areNumberMapsEqual(currentMap, nextMap) {
   const currentKeys = Object.keys(currentMap);
@@ -80,47 +35,75 @@ function areNumberMapsEqual(currentMap, nextMap) {
 
 const EMPTY_ROWS = [];
 
+function getColourOptions(rows) {
+  const uniqueColours = new Map();
+
+  (rows ?? [])
+    .map((row) => row.colour)
+    .filter(Boolean)
+    .forEach((value) => {
+      const colourKey = normalizeColourKey(value);
+
+      if (!colourKey || uniqueColours.has(colourKey)) {
+        return;
+      }
+
+      uniqueColours.set(colourKey, value);
+    });
+
+  return [...uniqueColours.values()].sort((left, right) =>
+    String(left ?? "").localeCompare(String(right ?? ""), undefined, {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+}
+
+function getRowsByColour(rows, colour) {
+  if (!colour) {
+    return [];
+  }
+
+  const selectedColourKey = normalizeColourKey(colour);
+  return (rows ?? []).filter((row) => normalizeColourKey(row.colour) === selectedColourKey);
+}
+
 export default function PlanSewingPage() {
   const [loadError, setLoadError] = useState("");
   const [planCuttingRecords, setPlanCuttingRecords] = useState([]);
-  const [usedKodePc, setUsedKodePc] = useState([]);
+  const [planSewingRecords, setPlanSewingRecords] = useState([]);
   const [rackingRecords, setRackingRecords] = useState([]);
   const [kodePc, setKodePc] = useState("");
+  const [colour, setColour] = useState("");
   const [tanggal, setTanggal] = useState("2026-04-11");
-  const [noPo, setNoPo] = useState(generatePlanSewingNoPo("2026-04-11"));
+  const [noPo, setNoPo] = useState("");
   const [qtyMap, setQtyMap] = useState({});
   const [openModal, setOpenModal] = useState(false);
 
   useEffect(() => {
     async function syncRecords() {
       try {
-        const [planRecords, usedKode, nextRackingRecords] = await Promise.all([
+        const [planRecords, nextPlanSewingRecords, nextRackingRecords] = await Promise.all([
           getPlanCuttingRecords(),
-          getUsedPlanSewingKodePc(),
+          getPlanSewingRecords(),
           getRackingRecords()
         ]);
-        const availableRecords = planRecords.filter(
-          (record) => !usedKode.includes(record.kodePc)
-        );
 
-        setPlanCuttingRecords(availableRecords);
-        setUsedKodePc(usedKode);
+        setPlanCuttingRecords(planRecords);
+        setPlanSewingRecords(nextPlanSewingRecords);
         setRackingRecords(nextRackingRecords);
         setLoadError("");
         setKodePc((current) => {
-          if (
-            current &&
-            availableRecords.some((record) => record.kodePc === current)
-          ) {
+          if (current && planRecords.some((record) => record.kodePc === current)) {
             return current;
           }
 
-          return availableRecords[0]?.kodePc ?? "";
+          return planRecords[0]?.kodePc ?? "";
         });
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : "Data Plan Sewing gagal dimuat.");
         setPlanCuttingRecords([]);
-        setUsedKodePc([]);
+        setPlanSewingRecords([]);
         setRackingRecords([]);
       }
     }
@@ -141,8 +124,12 @@ export default function PlanSewingPage() {
 
   const selectedPlan =
     planCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
+  const selectedPlanSewing =
+    planSewingRecords.find((record) => record.kodePc === kodePc) ?? null;
   const model = selectedPlan?.model ?? "";
-  const rows = selectedPlan?.rows ?? EMPTY_ROWS;
+  const allRows = selectedPlan?.rows ?? EMPTY_ROWS;
+  const colourOptions = useMemo(() => getColourOptions(allRows), [allRows]);
+  const rows = useMemo(() => getRowsByColour(allRows, colour), [allRows, colour]);
   const relatedRacking =
     rackingRecords.find((record) => record.kodePc === kodePc) ?? null;
   const rackingQtyMap = useMemo(() => {
@@ -158,21 +145,42 @@ export default function PlanSewingPage() {
   const hasRackingData = Boolean(relatedRacking);
 
   useEffect(() => {
+    setNoPo(selectedPlan?.noPo ?? "");
+  }, [selectedPlan?.kodePc, selectedPlan?.noPo]);
+
+  useEffect(() => {
+    setColour((current) => {
+      if (current && colourOptions.some((option) => normalizeColourKey(option) === normalizeColourKey(current))) {
+        return current;
+      }
+
+      return colourOptions[0] ?? "";
+    });
+  }, [colourOptions, kodePc]);
+
+  useEffect(() => {
+    const savedRowsBySku = Object.fromEntries(
+      (selectedPlanSewing?.rows ?? [])
+        .filter((row) => normalizeColourKey(row.colour) === normalizeColourKey(colour))
+        .map((row) => [row.sku, Number(row.qtyPlanSewing ?? 0)])
+    );
+
     const nextQtyMap = Object.fromEntries(
       rows.map((row) => [
         row.sku,
-        hasRackingData
-          ? Number(rackingQtyMap[row.sku] ?? 0)
-          : Number(row.qtyPlan ?? 0)
+        Number(
+          savedRowsBySku[row.sku] ??
+            (hasRackingData ? Number(rackingQtyMap[row.sku] ?? 0) : Number(row.qtyPlan ?? 0))
+        )
       ])
     );
 
     setQtyMap((current) =>
       areNumberMapsEqual(current, nextQtyMap) ? current : nextQtyMap
     );
-  }, [hasRackingData, kodePc, rackingQtyMap, rows]);
+  }, [colour, hasRackingData, kodePc, rackingQtyMap, rows, selectedPlanSewing]);
 
-  const isReady = Boolean(selectedPlan?.kodePc);
+  const isReady = Boolean(selectedPlan?.kodePc && colour);
   const noPc = kodePc;
   const kodePs = formatCode("PS", noPo, model);
   const totalCut = rows.reduce(
@@ -295,26 +303,38 @@ export default function PlanSewingPage() {
               ))}
             </SelectInput>
           </Field>
-          <Field badge={{ label: "Auto Fill", variant: "auto" }} label="No PO" required>
+          <Field badge={{ label: "Manual", variant: "manual" }} label="No PO" required>
             <TextInput
-              placeholder="Format otomatis: PS4B26 (berdasarkan tanggal + 1 minggu)"
-              readOnly
+              onChange={(event) => setNoPo(event.target.value)}
+              placeholder="Isi No PO manual"
               value={noPo}
             />
           </Field>
           <Field badge={{ label: "Manual", variant: "manual" }} label="Tanggal">
             <TextInput
-              onChange={(event) => {
-                const nextDate = event.target.value;
-                setTanggal(nextDate);
-                setNoPo(generatePlanSewingNoPo(nextDate));
-              }}
+              onChange={(event) => setTanggal(event.target.value)}
               type="date"
               value={tanggal}
             />
           </Field>
           <Field badge={{ label: "Auto Fill", variant: "auto" }} label="Nama Model" required>
             <TextInput readOnly value={model} />
+          </Field>
+          <Field badge={{ label: "Dropdown", variant: "dropdown" }} label="Colour" required>
+            <SelectInput
+              disabled={!kodePc || !colourOptions.length}
+              onChange={(event) => setColour(event.target.value)}
+              value={colour}
+            >
+              <option value="">
+                {kodePc ? "-- Pilih Colour --" : "-- Pilih Kode PC terlebih dahulu --"}
+              </option>
+              {colourOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </SelectInput>
           </Field>
           <Field badge={{ label: "Auto Generate", variant: "generate" }} full label="Kode PS">
             <TextInput readOnly value={kodePs} />
@@ -325,9 +345,7 @@ export default function PlanSewingPage() {
           <StatusStrip>
             <Badge variant="warn">Belum Ada Kode PC</Badge>
             <span className="status-copy">
-              {usedKodePc.length
-                ? "Semua Kode PC dari Plan Cutting sudah dipakai di Plan Sewing."
-                : "Belum ada data Plan Cutting yang siap dipakai di Plan Sewing."}
+              Belum ada data Plan Cutting yang siap dipakai di Plan Sewing.
             </span>
           </StatusStrip>
         ) : null}
@@ -343,6 +361,7 @@ export default function PlanSewingPage() {
                 : "Qty Cutting belum tersedia. Tabel hanya memakai Qty Plan dari Plan Cutting sebagai referensi."}
             </span>
             <Tag>{noPc}</Tag>
+            <Tag>{colour}</Tag>
           </StatusStrip>
         ) : null}
       </FormCard>
@@ -414,6 +433,7 @@ export default function PlanSewingPage() {
               noPc,
               noPo,
               kodePs,
+              colour,
               tanggal,
               model,
               rows: savedRows

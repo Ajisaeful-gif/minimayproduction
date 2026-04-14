@@ -15,6 +15,13 @@
       "when": 1775974574147,
       "tag": "0001_typical_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776149257154,
+      "tag": "0002_rapid_praxagora",
+      "breakpoints": true
     }
   ]
 }

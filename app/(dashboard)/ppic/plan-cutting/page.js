@@ -22,53 +22,11 @@ import {
   getRowsByModel,
   formatCode
 } from "@/lib/master-data-client";
+import { normalizeColourKey } from "@/lib/colour-format";
 import {
   getPlanCuttingRecords,
   savePlanCuttingRecord
 } from "@/lib/plan-cutting-storage";
-
-function getWeekLetter(dateValue) {
-  const day = dateValue.getDate();
-
-  if (day <= 7) {
-    return "A";
-  }
-
-  if (day <= 14) {
-    return "B";
-  }
-
-  if (day <= 21) {
-    return "C";
-  }
-
-  if (day <= 28) {
-    return "D";
-  }
-
-  return "E";
-}
-
-function generatePlanCuttingNoPo(dateValue) {
-  if (!dateValue) {
-    return "";
-  }
-
-  const date = new Date(`${dateValue}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const effectiveDate = new Date(date);
-  effectiveDate.setDate(effectiveDate.getDate() + 7);
-
-  const month = effectiveDate.getMonth() + 1;
-  const weekLetter = getWeekLetter(effectiveDate);
-  const year = String(effectiveDate.getFullYear()).slice(-2);
-
-  return `PC${month}${weekLetter}${year}`;
-}
 
 function getWeekdayIndex(dateValue) {
   const date = new Date(`${dateValue}T00:00:00`);
@@ -89,7 +47,22 @@ function getColourOptionsByModel(skuRows, model) {
     return [];
   }
 
-  return [...new Set(getRowsByModel(skuRows, model).map((row) => row.colour).filter(Boolean))]
+  const uniqueColours = new Map();
+
+  getRowsByModel(skuRows, model)
+    .map((row) => row.colour)
+    .filter(Boolean)
+    .forEach((value) => {
+      const colourKey = normalizeColourKey(value);
+
+      if (!colourKey || uniqueColours.has(colourKey)) {
+        return;
+      }
+
+      uniqueColours.set(colourKey, value);
+    });
+
+  return [...uniqueColours.values()]
     .map((value) => ({ value }))
     .sort((left, right) =>
       String(left.value ?? "").localeCompare(String(right.value ?? ""), undefined, {
@@ -104,7 +77,11 @@ function getRowsByModelAndColour(skuRows, model, colour) {
     return [];
   }
 
-  return getRowsByModel(skuRows, model).filter((row) => row.colour === colour);
+  const selectedColourKey = normalizeColourKey(colour);
+
+  return getRowsByModel(skuRows, model).filter(
+    (row) => normalizeColourKey(row.colour) === selectedColourKey
+  );
 }
 
 function areNumberMapsEqual(currentMap, nextMap) {
@@ -120,7 +97,7 @@ function areNumberMapsEqual(currentMap, nextMap) {
 
 export default function PlanCuttingPage() {
   const [tanggal, setTanggal] = useState("2026-04-11");
-  const [noPo, setNoPo] = useState(generatePlanCuttingNoPo("2026-04-11"));
+  const [noPo, setNoPo] = useState("");
   const [masterData, setMasterData] = useState({
     skuRows: [],
     kodePolaRows: [],
@@ -208,7 +185,7 @@ export default function PlanCuttingPage() {
     const selectionKey = `${buildPlanCuttingCode(noPo, nextModel)}::${nextColour}`;
     const savedRowsBySku = Object.fromEntries(
       (existingRecord?.rows ?? [])
-        .filter((row) => row.colour === nextColour)
+        .filter((row) => normalizeColourKey(row.colour) === normalizeColourKey(nextColour))
         .map((row) => [row.sku, Number(row.qtyPlan ?? 0)])
     );
 
@@ -306,10 +283,10 @@ export default function PlanCuttingPage() {
 
       <FormCard title="Informasi Order">
         <div className="form-grid">
-          <Field badge={{ label: "Auto Fill", variant: "auto" }} label="No PO" required>
+          <Field badge={{ label: "Manual", variant: "manual" }} label="No PO" required>
             <TextInput
-              placeholder="Format otomatis: PC3A26 (berdasarkan tanggal + 1 minggu)"
-              readOnly
+              onChange={(event) => setNoPo(event.target.value)}
+              placeholder="Isi No PO manual"
               value={noPo}
             />
           </Field>
@@ -371,7 +348,6 @@ export default function PlanCuttingPage() {
 
                 if (!nextDate) {
                   setTanggal("");
-                  setNoPo("");
                   return;
                 }
 
@@ -381,7 +357,6 @@ export default function PlanCuttingPage() {
                 }
 
                 setTanggal(nextDate);
-                setNoPo(generatePlanCuttingNoPo(nextDate));
               }}
               type="date"
               value={tanggal}

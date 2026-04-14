@@ -970,27 +970,32 @@ select {
 }
 
 .recap-matrix-layout {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.9fr);
   gap: 14px;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .recap-matrix-wrap {
   overflow-x: auto;
   border: 1px solid rgba(92, 74, 49, 0.08);
   border-radius: 24px;
-  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
 }
 
 .recap-matrix-wrap-secondary {
-  flex: 0 0 auto;
+  width: 100%;
 }
 
 .recap-matrix-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.9rem;
+  height: 100%;
 }
 
 .recap-matrix-table th,
@@ -1002,7 +1007,47 @@ select {
 }
 
 .recap-matrix-table-secondary {
-  min-width: 360px;
+  min-width: 100%;
+}
+
+.recap-matrix-col-no {
+  width: 52px;
+}
+
+.recap-matrix-col-warna {
+  width: 188px;
+}
+
+.recap-matrix-col-size {
+  width: 90px;
+}
+
+.recap-matrix-col-total {
+  width: 132px;
+}
+
+.recap-matrix-col-no-main {
+  width: 52px;
+}
+
+.recap-matrix-col-warna-main {
+  width: 164px;
+}
+
+.recap-matrix-col-size-main {
+  width: 82px;
+}
+
+.recap-matrix-col-total-main {
+  width: 122px;
+}
+
+.recap-matrix-col-no-secondary {
+  width: 48px;
+}
+
+.recap-matrix-col-size-secondary {
+  width: 64px;
 }
 
 .recap-matrix-head.base {
@@ -1015,7 +1060,7 @@ select {
 .recap-matrix-head.base.warna,
 .recap-matrix-cell.warna {
   text-align: left;
-  min-width: 150px;
+  min-width: 0;
 }
 
 .recap-matrix-head.hasil-group {
@@ -1056,6 +1101,10 @@ select {
   background: #fffdfa;
 }
 
+.recap-matrix-body-row {
+  height: 72px;
+}
+
 .recap-matrix-cell.no {
   width: 54px;
   color: var(--muted);
@@ -1063,6 +1112,17 @@ select {
 
 .recap-matrix-cell.hasil {
   background: #f7fbf4;
+}
+
+.recap-matrix-input {
+  width: 100%;
+  max-width: 72px;
+  min-height: 36px;
+  height: 36px;
+  margin: 0 auto;
+  text-align: center;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .recap-matrix-cell.pengajuan {
@@ -1093,7 +1153,7 @@ select {
 
 @media (max-width: 1180px) {
   .recap-matrix-layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .recap-matrix-wrap-secondary {
