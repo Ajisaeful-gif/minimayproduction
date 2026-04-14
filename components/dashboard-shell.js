@@ -115,6 +115,14 @@ function Icon({ name }) {
         <path d="M9 15h6" />
       </svg>
     ),
+    report: (
+      <svg {...common}>
+        <path d="M6 19h12" />
+        <path d="M8 15V9" />
+        <path d="M12 15V5" />
+        <path d="M16 15v-3" />
+      </svg>
+    ),
     userCard: (
       <svg {...common}>
         <rect height="16" rx="2" width="18" x="3" y="4" />
@@ -152,11 +160,11 @@ function getVisibleNavigationGroups(role) {
   }
 
   if (role === "ppic") {
-    return navigationGroups.filter((group) => group.key === "ppic");
+    return navigationGroups.filter((group) => ["ppic", "report"].includes(group.key));
   }
 
   if (role === "produksi") {
-    return navigationGroups.filter((group) => group.key === "produksi");
+    return navigationGroups.filter((group) => ["produksi", "report"].includes(group.key));
   }
 
   return [];

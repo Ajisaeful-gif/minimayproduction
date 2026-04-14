@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionRow,
   Badge,
@@ -22,7 +22,10 @@ import {
   getRowsByModel,
   formatCode
 } from "@/lib/master-data-client";
-import { savePlanCuttingRecord } from "@/lib/plan-cutting-storage";
+import {
+  getPlanCuttingRecords,
+  savePlanCuttingRecord
+} from "@/lib/plan-cutting-storage";
 
 function getWeekLetter(dateValue) {
   const day = dateValue.getDate();
@@ -77,6 +80,10 @@ function getWeekdayIndex(dateValue) {
   return date.getDay();
 }
 
+function buildPlanCuttingCode(noPo, model) {
+  return formatCode("PC", noPo, model);
+}
+
 function getColourOptionsByModel(skuRows, model) {
   if (!model) {
     return [];
@@ -100,20 +107,15 @@ function getRowsByModelAndColour(skuRows, model, colour) {
   return getRowsByModel(skuRows, model).filter((row) => row.colour === colour);
 }
 
-function buildPlanCuttingCode(noPo, model, colour) {
-  const baseCode = formatCode("PC", noPo, model);
-  const colourShort = String(colour ?? "")
-    .trim()
-    .split(/\s+/)[0]
-    ?.replace(/[^A-Za-z0-9]/g, "")
-    .toUpperCase()
-    .slice(0, 6);
+function areNumberMapsEqual(currentMap, nextMap) {
+  const currentKeys = Object.keys(currentMap);
+  const nextKeys = Object.keys(nextMap);
 
-  if (!baseCode) {
-    return "";
+  if (currentKeys.length !== nextKeys.length) {
+    return false;
   }
 
-  return colourShort ? `${baseCode}-${colourShort}` : baseCode;
+  return nextKeys.every((key) => Number(currentMap[key] ?? 0) === Number(nextMap[key] ?? 0));
 }
 
 export default function PlanCuttingPage() {
@@ -127,29 +129,40 @@ export default function PlanCuttingPage() {
     operators: { cutting: [], seri: [], racking: [], sewing: [] }
   });
   const [masterError, setMasterError] = useState("");
+  const [planCuttingRecords, setPlanCuttingRecords] = useState([]);
   const [model, setModel] = useState("");
   const [modelSearch, setModelSearch] = useState("");
   const [colour, setColour] = useState("");
+  const [clearedSelectionKey, setClearedSelectionKey] = useState("");
   const [kodePola, setKodePola] = useState("");
   const [jenisKain, setJenisKain] = useState("");
   const [qtyMap, setQtyMap] = useState({});
   const [openModal, setOpenModal] = useState(false);
+  const latestModelRef = useRef("");
+
+  useEffect(() => {
+    latestModelRef.current = model;
+  }, [model]);
 
   useEffect(() => {
     let active = true;
 
-    async function loadMasterData() {
+    async function loadData() {
       try {
-        const data = await getMasterData();
+        const [data, records] = await Promise.all([
+          getMasterData(),
+          getPlanCuttingRecords()
+        ]);
 
         if (!active) {
           return;
         }
 
         setMasterData(data);
+        setPlanCuttingRecords(records);
         setMasterError("");
 
-        if (!model && data.modelOptions.length) {
+        if (!latestModelRef.current && data.modelOptions.length) {
           applySelectedModel(data.modelOptions[0].value, data);
         }
       } catch (error) {
@@ -161,16 +174,20 @@ export default function PlanCuttingPage() {
       }
     }
 
-    loadMasterData();
+    loadData();
+    window.addEventListener("plan-cutting-storage-changed", loadData);
 
     return () => {
       active = false;
+      window.removeEventListener("plan-cutting-storage-changed", loadData);
     };
   }, []);
 
+  const kodePc = buildPlanCuttingCode(noPo, model);
   const colourOptions = getColourOptionsByModel(masterData.skuRows, model);
   const rows = getRowsByModelAndColour(masterData.skuRows, model, colour);
-  const kodePc = buildPlanCuttingCode(noPo, model, colour);
+  const existingRecord =
+    planCuttingRecords.find((record) => record.kodePc === kodePc) ?? null;
 
   function resolveExactModel(keyword) {
     const normalizedKeyword = String(keyword ?? "").trim().toLowerCase();
@@ -188,27 +205,48 @@ export default function PlanCuttingPage() {
 
   function applySelectedColour(nextColour, nextModel = model, sourceData = masterData) {
     const nextRows = getRowsByModelAndColour(sourceData.skuRows, nextModel, nextColour);
+    const selectionKey = `${buildPlanCuttingCode(noPo, nextModel)}::${nextColour}`;
+    const savedRowsBySku = Object.fromEntries(
+      (existingRecord?.rows ?? [])
+        .filter((row) => row.colour === nextColour)
+        .map((row) => [row.sku, Number(row.qtyPlan ?? 0)])
+    );
 
     setColour(nextColour);
-    setQtyMap(
-      Object.fromEntries(nextRows.map((row) => [row.sku, Number(row.qtyPlan ?? 0)]))
-    );
+    setQtyMap((current) => {
+      const nextQtyMap = Object.fromEntries(
+        nextRows.map((row) => [
+          row.sku,
+          clearedSelectionKey === selectionKey
+            ? 0
+            : Number(savedRowsBySku[row.sku] ?? row.qtyPlan ?? 0)
+        ])
+      );
+
+      return areNumberMapsEqual(current, nextQtyMap) ? current : nextQtyMap;
+    });
   }
 
   function applySelectedModel(nextModel, sourceData = masterData) {
     const availableColours = getColourOptionsByModel(sourceData.skuRows, nextModel);
     const nextColour = availableColours[0]?.value ?? "";
-    const nextRows = getRowsByModelAndColour(sourceData.skuRows, nextModel, nextColour);
 
     setModel(nextModel);
     setModelSearch(nextModel);
     setColour(nextColour);
+    setClearedSelectionKey("");
     setKodePola(getKodePolaByModel(sourceData.kodePolaRows, nextModel));
     setJenisKain(getJenisKainByModel(sourceData.jenisKainRows, nextModel));
-    setQtyMap(
-      Object.fromEntries(nextRows.map((row) => [row.sku, Number(row.qtyPlan ?? 0)]))
-    );
   }
+
+  useEffect(() => {
+    if (!model || !colour) {
+      setQtyMap({});
+      return;
+    }
+
+    applySelectedColour(colour);
+  }, [colour, existingRecord, model]);
 
   const columns = [
     { key: "sku", label: "Kode SKU" },
@@ -293,6 +331,7 @@ export default function PlanCuttingPage() {
                 if (nextSearch !== model) {
                   setModel("");
                   setColour("");
+                  setClearedSelectionKey("");
                   setKodePola("");
                   setJenisKain("");
                   setQtyMap({});
@@ -308,7 +347,10 @@ export default function PlanCuttingPage() {
           <Field badge={{ label: "Dropdown", variant: "dropdown" }} label="Colour" required>
             <SelectInput
               disabled={!model || !colourOptions.length}
-              onChange={(event) => applySelectedColour(event.target.value)}
+              onChange={(event) => {
+                setClearedSelectionKey("");
+                applySelectedColour(event.target.value);
+              }}
               value={colour}
             >
               <option value="">
@@ -441,6 +483,7 @@ export default function PlanCuttingPage() {
                 kodePc,
                 noPo,
                 model,
+                colour,
                 tanggal,
                 kodePola,
                 jenisKain,
@@ -448,6 +491,10 @@ export default function PlanCuttingPage() {
               });
 
               setOpenModal(false);
+              setClearedSelectionKey(`${kodePc}::${colour}`);
+              setQtyMap(
+                Object.fromEntries(rows.map((row) => [row.sku, 0]))
+              );
               window.alert(`Plan Cutting disimpan.\nKode PC: ${kodePc}`);
             } catch (error) {
               window.alert(error instanceof Error ? error.message : "Plan Cutting gagal disimpan.");

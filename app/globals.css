@@ -969,10 +969,21 @@ select {
   border-bottom: none;
 }
 
+.recap-matrix-layout {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
 .recap-matrix-wrap {
   overflow-x: auto;
   border: 1px solid rgba(92, 74, 49, 0.08);
   border-radius: 24px;
+  flex: 1 1 auto;
+}
+
+.recap-matrix-wrap-secondary {
+  flex: 0 0 auto;
 }
 
 .recap-matrix-table {
@@ -988,6 +999,10 @@ select {
   border: 1px solid rgba(92, 74, 49, 0.12);
   text-align: center;
   vertical-align: middle;
+}
+
+.recap-matrix-table-secondary {
+  min-width: 360px;
 }
 
 .recap-matrix-head.base {
@@ -1074,6 +1089,20 @@ select {
   background: #fffdfa;
   color: var(--muted);
   text-align: center;
+}
+
+@media (max-width: 1180px) {
+  .recap-matrix-layout {
+    flex-direction: column;
+  }
+
+  .recap-matrix-wrap-secondary {
+    width: 100%;
+  }
+
+  .recap-matrix-table-secondary {
+    min-width: 100%;
+  }
 }
 
 .empty-state {

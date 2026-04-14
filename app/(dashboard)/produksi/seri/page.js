@@ -16,18 +16,39 @@ import {
   TextInput,
   SelectInput
 } from "@/components/ui";
-import { getMasterData, getSkuMetaBySku } from "@/lib/master-data-client";
+import {
+  getMasterData,
+  getSkuMetaBySku
+} from "@/lib/master-data-client";
+import { getColourCode } from "@/lib/colour-format";
 import { getCuttingRecords } from "@/lib/cutting-storage";
 import {
-  deleteSeriEntry,
   getSeriRecords,
-  saveSeriEntry
+  saveSeriEntry,
+  updateSeriEntryQty
 } from "@/lib/seri-storage";
 
-function buildKodeProduksi(type, sequence, noPo) {
-  const prefix = type === "Rayon" ? "KPR" : "KPS";
+function buildKodeProduksi(sequence, model, colour) {
+  const modelCode = String(model ?? "")
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 3);
+  const colourCode = getColourCode(colour);
+  const parts = [`KPS${String(sequence).padStart(3, "0")}`];
 
-  return `${prefix}${String(sequence).padStart(3, "0")}-${noPo ?? ""}`;
+  if (modelCode) {
+    parts.push(modelCode);
+  }
+
+  if (colourCode) {
+    parts.push(colourCode);
+  }
+
+  return parts.join("-");
 }
 
 function buildSkuTotals(entries = []) {
@@ -72,6 +93,8 @@ export default function SeriPage() {
   const [selectedSku, setSelectedSku] = useState("");
   const [qtyIkatInput, setQtyIkatInput] = useState("");
   const [openModal, setOpenModal] = useState(false);
+  const [historyQtyMap, setHistoryQtyMap] = useState({});
+  const [savingHistoryEntryId, setSavingHistoryEntryId] = useState("");
   const seriOperators = masterData.operators.seri ?? [];
 
   useEffect(() => {
@@ -136,14 +159,33 @@ export default function SeriPage() {
   const cuttingRows = selectedCutting?.rows ?? EMPTY_ROWS;
   const historyEntries = selectedSeriRecord?.entries ?? EMPTY_ENTRIES;
   const skuTotals = useMemo(() => buildSkuTotals(historyEntries), [historyEntries]);
+  const selectableRows = useMemo(
+    () =>
+      cuttingRows.filter(
+        (row) =>
+          Math.max(
+            Number(row.qtyCutting ?? 0) - Number(skuTotals[row.sku] ?? 0),
+            0
+          ) > 0
+      ),
+    [cuttingRows, skuTotals]
+  );
+
+  useEffect(() => {
+    setHistoryQtyMap(
+      Object.fromEntries(
+        historyEntries.map((entry) => [entry.entryId, String(Number(entry.qtyIkat ?? 0))])
+      )
+    );
+  }, [historyEntries]);
 
   useEffect(() => {
     setSelectedSku((current) => {
-      if (current && cuttingRows.some((row) => row.sku === current)) {
+      if (current && selectableRows.some((row) => row.sku === current)) {
         return current;
       }
 
-      return cuttingRows[0]?.sku ?? "";
+      return selectableRows[0]?.sku ?? "";
     });
 
     if (selectedSeriRecord?.kodePc === kodePc) {
@@ -159,10 +201,10 @@ export default function SeriPage() {
     }
 
     setQtyIkatInput("");
-  }, [cuttingRows, kodePc, selectedSeriRecord, seriOperators]);
+  }, [kodePc, selectableRows, selectedSeriRecord, seriOperators]);
 
   const selectedRow =
-    cuttingRows.find((row) => row.sku === selectedSku) ?? cuttingRows[0] ?? null;
+    selectableRows.find((row) => row.sku === selectedSku) ?? selectableRows[0] ?? null;
   const selectedMeta = selectedRow ? getSkuMetaBySku(masterData.skuRows, selectedRow.sku) : null;
   const totalSavedForSelected = selectedRow
     ? Number(skuTotals[selectedRow.sku] ?? 0)
@@ -171,7 +213,7 @@ export default function SeriPage() {
   const sisaSelected = Math.max(selectedQtyCutting - totalSavedForSelected, 0);
   const nextSequence = selectedSeriRecord?.nextSequence ?? 1;
   const kodeProduksi = selectedRow
-    ? buildKodeProduksi(selectedMeta?.type, nextSequence, selectedCutting?.noPo)
+    ? buildKodeProduksi(nextSequence, selectedCutting?.model, selectedRow.colour)
     : "";
   const isReady = Boolean(kodePc.trim());
 
@@ -213,8 +255,7 @@ export default function SeriPage() {
     { key: "size", label: "Size", align: "center" },
     { key: "sku", label: "Kode SKU" },
     { key: "qty", label: "Qty Ikat", align: "center" },
-    { key: "jenis", label: "Ket. Rayon & Kaos" },
-    { key: "aksi", label: "Aksi", align: "center" }
+    { key: "jenis", label: "Ket. Rayon & Kaos" }
   ];
 
   const historyRows = historyEntries.map((entry) => ({
@@ -222,23 +263,57 @@ export default function SeriPage() {
     kodeProduksi: <Tag>{entry.kodeProduksi}</Tag>,
     size: <Tag>{entry.size}</Tag>,
     sku: <Tag>{entry.sku}</Tag>,
-    qty: <Tag>{entry.qtyIkat}</Tag>,
-    jenis: entry.jenis,
-    aksi: (
-      <Button
-        onClick={() => {
-          void deleteSeriEntry(kodePc, entry.entryId).catch((error) => {
-            window.alert(
-              error instanceof Error ? error.message : "Riwayat Seri gagal dihapus."
-            );
-          });
-        }}
-        small
-        variant="warn"
-      >
-        Hapus
-      </Button>
-    )
+    qty: (
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <input
+          className="text-input"
+          disabled={savingHistoryEntryId === entry.entryId}
+          min="1"
+          onBlur={() => {
+            const rawValue = historyQtyMap[entry.entryId] ?? String(entry.qtyIkat ?? 0);
+            const nextQty = Number(rawValue || 0);
+
+            if (nextQty === Number(entry.qtyIkat ?? 0)) {
+              return;
+            }
+
+            if (nextQty <= 0) {
+              setHistoryQtyMap((current) => ({
+                ...current,
+                [entry.entryId]: String(Number(entry.qtyIkat ?? 0))
+              }));
+              window.alert("Qty Ikat harus lebih dari 0.");
+              return;
+            }
+
+            setSavingHistoryEntryId(entry.entryId);
+            void updateSeriEntryQty(kodePc, entry.entryId, nextQty)
+              .catch((error) => {
+                setHistoryQtyMap((current) => ({
+                  ...current,
+                  [entry.entryId]: String(Number(entry.qtyIkat ?? 0))
+                }));
+                window.alert(
+                  error instanceof Error ? error.message : "Qty Ikat gagal diperbarui."
+                );
+              })
+              .finally(() => {
+                setSavingHistoryEntryId("");
+              });
+          }}
+          onChange={(event) =>
+            setHistoryQtyMap((current) => ({
+              ...current,
+              [entry.entryId]: event.target.value
+            }))
+          }
+          style={{ maxWidth: "108px", textAlign: "center", minHeight: "42px" }}
+          type="number"
+          value={historyQtyMap[entry.entryId] ?? String(Number(entry.qtyIkat ?? 0))}
+        />
+      </div>
+    ),
+    jenis: entry.jenis
   }));
   const totalHistoryQty = historyEntries.reduce(
     (total, entry) => total + Number(entry.qtyIkat ?? 0),
@@ -341,17 +416,19 @@ export default function SeriPage() {
 
           <FormCard title="Input per Ikat">
             <div className="form-grid">
-              <Field badge={{ label: "Dropdown", variant: "dropdown" }} label="Pilih SKU" required>
+              <Field badge={{ label: "Dropdown", variant: "dropdown" }} label="Pilih Size" required>
                 <SelectInput
+                  disabled={!selectableRows.length}
                   onChange={(event) => {
                     setSelectedSku(event.target.value);
                     setQtyIkatInput("");
                   }}
                   value={selectedSku}
                 >
-                  {cuttingRows.map((row) => (
+                  <option value="">-- Pilih Size --</option>
+                  {selectableRows.map((row) => (
                     <option key={row.sku} value={row.sku}>
-                      {row.sku} - {row.size} / {row.colour}
+                      {row.size} - {row.sku}
                     </option>
                   ))}
                 </SelectInput>
@@ -403,7 +480,7 @@ export default function SeriPage() {
               <Field badge={{ label: "Auto Generate", variant: "generate" }} full label="Kode Produksi">
                 <CodeDisplay
                   action={<Button small>Salin</Button>}
-                  meta="KPS/KPR + nomor urut + No PO"
+                  meta="KPS + nomor urut + model + kode warna"
                   value={kodeProduksi}
                 />
               </Field>

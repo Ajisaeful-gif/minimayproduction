@@ -222,18 +222,13 @@ export default function CuttingPage() {
         (total, size) => total + hasilCuttingBySize[size],
         0
       );
-      const pengajuanTotal = cuttingSizeOrder.reduce(
-        (total, size) => total + pengajuanBySize[size],
-        0
-      );
 
       return {
         key: colour,
         warna: colour,
         hasilCuttingBySize,
         hasilCuttingTotal,
-        pengajuanBySize,
-        pengajuanTotal
+        pengajuanBySize
       };
     }
   );
@@ -338,94 +333,116 @@ export default function CuttingPage() {
           </FormCard>
 
           <FormCard title="Rekap Cutting">
-            <div className="recap-matrix-wrap">
-              <table className="recap-matrix-table">
-                <thead>
-                  <tr>
-                    <th className="recap-matrix-head base" rowSpan="2">
-                      No
-                    </th>
-                    <th className="recap-matrix-head base warna" rowSpan="2">
-                      Warna
-                    </th>
-                    <th
-                      className="recap-matrix-head hasil-group"
-                      colSpan={cuttingSizeOrder.length + 1}
-                    >
-                      Hasil Cutting
-                    </th>
-                    <th
-                      className="recap-matrix-head pengajuan-group"
-                      colSpan={cuttingSizeOrder.length + 1}
-                    >
-                      Pengajuan Cutting
-                    </th>
-                  </tr>
-                  <tr>
-                    {cuttingSizeOrder.map((size) => (
-                      <th
-                        className="recap-matrix-subhead hasil"
-                        key={`hasil-${size}`}
-                      >
-                        {size}
+            <div className="recap-matrix-layout">
+              <div className="recap-matrix-wrap">
+                <table className="recap-matrix-table">
+                  <thead>
+                    <tr>
+                      <th className="recap-matrix-head base" rowSpan="2">
+                        No
                       </th>
-                    ))}
-                    <th className="recap-matrix-subhead hasil total">Total</th>
-                    {cuttingSizeOrder.map((size) => (
-                      <th
-                        className="recap-matrix-subhead pengajuan"
-                        key={`pengajuan-${size}`}
-                      >
-                        {size}
+                      <th className="recap-matrix-head base warna" rowSpan="2">
+                        Warna
                       </th>
-                    ))}
-                    <th className="recap-matrix-subhead pengajuan total">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recapRows.length ? (
-                    recapRows.map((row, index) => (
-                      <tr key={row.key}>
-                        <td className="recap-matrix-cell no">{index + 1}</td>
-                        <td className="recap-matrix-cell warna">{row.warna}</td>
-                        {cuttingSizeOrder.map((size) => (
-                          <td
-                            className="recap-matrix-cell hasil"
-                            key={`${row.key}-hasil-${size}`}
-                          >
-                            {row.hasilCuttingBySize[size]}
+                      <th className="recap-matrix-head hasil-group" colSpan={cuttingSizeOrder.length + 1}>
+                        Hasil Cutting
+                      </th>
+                    </tr>
+                    <tr>
+                      {cuttingSizeOrder.map((size) => (
+                        <th
+                          className="recap-matrix-subhead hasil"
+                          key={`hasil-${size}`}
+                        >
+                          {size}
+                        </th>
+                      ))}
+                      <th className="recap-matrix-subhead hasil total">
+                        Total Qty Potong
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recapRows.length ? (
+                      recapRows.map((row, index) => (
+                        <tr key={row.key}>
+                          <td className="recap-matrix-cell no">{index + 1}</td>
+                          <td className="recap-matrix-cell warna">{row.warna}</td>
+                          {cuttingSizeOrder.map((size) => (
+                            <td
+                              className="recap-matrix-cell hasil"
+                              key={`${row.key}-hasil-${size}`}
+                            >
+                              {row.hasilCuttingBySize[size]}
+                            </td>
+                          ))}
+                          <td className="recap-matrix-cell hasil total">
+                            {row.hasilCuttingTotal}
                           </td>
-                        ))}
-                        <td className="recap-matrix-cell hasil total">
-                          {row.hasilCuttingTotal}
-                        </td>
-                        {cuttingSizeOrder.map((size) => (
-                          <td
-                            className="recap-matrix-cell pengajuan"
-                            key={`${row.key}-pengajuan-${size}`}
-                          >
-                            {row.pengajuanBySize[size]}
-                          </td>
-                        ))}
-                        <td className="recap-matrix-cell pengajuan total">
-                          {row.pengajuanTotal}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          className="recap-matrix-empty"
+                          colSpan={cuttingSizeOrder.length + 3}
+                        >
+                          Belum ada data warna untuk ditampilkan pada Rekap Cutting.
                         </td>
                       </tr>
-                    ))
-                  ) : (
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="recap-matrix-wrap recap-matrix-wrap-secondary">
+                <table className="recap-matrix-table recap-matrix-table-secondary">
+                  <thead>
                     <tr>
-                      <td
-                        className="recap-matrix-empty"
-                        colSpan={cuttingSizeOrder.length * 2 + 4}
-                      >
-                        Belum ada data warna untuk ditampilkan pada Rekap Cutting.
-                      </td>
+                      <th className="recap-matrix-head pengajuan-group" colSpan={cuttingSizeOrder.length + 1}>
+                        Pengajuan Cutting
+                      </th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                    <tr>
+                      <th className="recap-matrix-subhead pengajuan">No</th>
+                      {cuttingSizeOrder.map((size) => (
+                        <th
+                          className="recap-matrix-subhead pengajuan"
+                          key={`pengajuan-${size}`}
+                        >
+                          {size}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recapRows.length ? (
+                      recapRows.map((row, index) => (
+                        <tr key={`${row.key}-pengajuan`}>
+                          <td className="recap-matrix-cell pengajuan no">{index + 1}</td>
+                          {cuttingSizeOrder.map((size) => (
+                            <td
+                              className="recap-matrix-cell pengajuan"
+                              key={`${row.key}-pengajuan-${size}`}
+                            >
+                              {row.pengajuanBySize[size]}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          className="recap-matrix-empty"
+                          colSpan={cuttingSizeOrder.length + 1}
+                        >
+                          Belum ada data pengajuan cutting.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </FormCard>
         </>
